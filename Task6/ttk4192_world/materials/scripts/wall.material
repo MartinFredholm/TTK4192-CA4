@@ -1,0 +1,14 @@
+material MyTexture/WallMaterial
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture ../textures/marble.png
+        scale 0.5 0.5
+      }
+    }
+  }
+}
