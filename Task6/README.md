@@ -20,3 +20,12 @@ Command to run
 ```
 cp turtlebot3_ttk4192.launch ~/catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/launch
 ```
+
+### 3. Run gazebo to see if world has been made
+
+```
+cd catkin_ws && catkin_make
+export TURTLEBOT3_MODEL=waffle_pi
+source devel/setup.bash
+roslaunch turtlebot3_gazebo turtlebot3_ttk4192.launch
+```
