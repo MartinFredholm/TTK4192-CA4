@@ -3,7 +3,7 @@
 ### 1. Make world map
 The map has been made by Øystein, and only needs to be placed in the correct folder. 
 
-Comands to run to add this to the correct folder:
+Comands to run to add this to the correct folder: (run from Task6 folder)
 ```
 cp -r ttk4192_world ~/catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/models
 cp turtlebot3_ttk4192.world ~/catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/worlds
@@ -16,7 +16,7 @@ Or manually:
 ### 2. Create launch file
 The launch file has been given, and must be placed in the correct file. 
 
-Command to run
+Command to run: (run from Task6 folder)
 ```
 cp turtlebot3_ttk4192.launch ~/catkin_ws/src/turtlebot3_simulations/turtlebot3_gazebo/launch
 ```
