@@ -29,3 +29,6 @@ export TURTLEBOT3_MODEL=waffle_pi
 source devel/setup.bash
 roslaunch turtlebot3_gazebo turtlebot3_ttk4192.launch
 ```
+
+Your output should be something like this: (reference imagen)
+<img width="1440" alt="Skjermbilde 2025-04-08 kl  09 21 48" src="https://github.com/user-attachments/assets/eb43716e-9f0f-4012-8d21-c4d6c4ac2533" />
