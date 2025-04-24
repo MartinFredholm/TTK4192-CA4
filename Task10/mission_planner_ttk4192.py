@@ -911,7 +911,7 @@ if __name__ == '__main__':
         planner_cmd = (
             "python2.7 bin/plan.py stp-2 "
             f"\"{catkin_ws_src}/temporal-planning-main/temporal-planning/"
-              "domains/ttk4192/domain/PDDL_domain_1.pddl\" "
+              "domains/ttk4192/domain/PDDL_domain_11.pddl\" "
             f"\"{catkin_ws_src}/temporal-planning-main/temporal-planning/"
               "domains/ttk4192/problem/PDDL_problem_task11.pddl\""
         )
