@@ -337,14 +337,14 @@ class DubinsPath:
         phi1 = self.car.max_phi if s.d[0] == 1 else -self.car.max_phi
         phi2 = self.car.max_phi if s.d[1] == 1 else -self.car.max_phi
         phil = [phi1, 0, phi2]
-        goal = [s.t1, s.t2, self.end_pos]
+        goal = [ s.t1, s.t2, self.end_pos]
         ml = [1, 1, 1]
 
-        if s.t1 == self.start_pos:
+        if [round(e,3) for e in s.t1] == self.start_pos:
             phil.remove(phi1)
             goal.remove(s.t1)
             ml.remove(1)
-        if s.t2 == self.end_pos:
+        if [round(e,3) for e in s.t2] == self.end_pos:
             phil.remove(phi2)
             goal.remove(s.t2)
             ml.remove(1)

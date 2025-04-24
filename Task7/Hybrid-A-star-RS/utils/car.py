@@ -23,16 +23,16 @@ class State:
 class SimpleCar:
     """ Car model and functions. """
     # Here you define the vehicle size "l" and the maximun_drift angle max_phi
-    def __init__(self, env, start_pos=None, end_pos=None, l=0.2, max_phi=pi/4):
+    def __init__(self, env, start_pos=None, end_pos=None, l=0.3, max_phi=4*pi/9):
 
         self.env = env
         self.l = float(l)
         self.max_phi = max_phi
 
-        self.carl = 1 * self.l
-        self.carw = 1 * self.l
+        self.carl = self.l
+        self.carw = self.l
 
-        self.whll = 0.4 * self.l
+        self.whll = 0.3 * self.l
         self.whlw = 0.2*self.l
 
         if start_pos:
@@ -79,10 +79,10 @@ class SimpleCar:
 
         x, y, theta = pos
 
-        self.c1 = transform(x, y, 0.9*self.l, 0.4*self.l, theta, 1)
-        self.c2 = transform(x, y, 0.9*self.l, 0.4*self.l, theta, 2)
-        self.c3 = transform(x, y, 0.3*self.l, 0.4*self.l, theta, 3)
-        self.c4 = transform(x, y, 0.3*self.l, 0.4*self.l, theta, 4)
+        self.c1 = transform(x, y, 0.5*self.l, 0.5*self.l, theta, 1)
+        self.c2 = transform(x, y, 0.5*self.l, 0.5*self.l, theta, 2)
+        self.c3 = transform(x, y, 0.5*self.l, 0.5*self.l, theta, 3)
+        self.c4 = transform(x, y, 0.5*self.l, 0.5*self.l, theta, 4)
 
         vertex = [self.c1.tolist(), self.c2.tolist(), self.c4.tolist(), self.c3.tolist()]
 
@@ -96,14 +96,14 @@ class SimpleCar:
         pos = [x, y, theta]
         self.get_car_bounding(pos)
 
-        c_      = transform(x, y, self.l, 0.2*self.l, theta, 1)
+        c_      = transform(x, y, 0.3*self.l, 0.3*self.l, theta, 1)
         self.w1 = transform(c_[0], c_[1], 0.2*self.l, 0.1*self.l, theta+phi, 4)
         
-        c_      = transform(x, y, self.l, 0.2*self.l, theta, 2)
+        c_      = transform(x, y, 0.3*self.l, 0.3*self.l, theta, 2)
         self.w2 = transform(c_[0], c_[1], 0.2*self.l, 0.1*self.l, theta+phi, 4)
         
-        self.w3 = transform(x, y, 0.2*self.l, 0.1*self.l, theta, 3)
-        self.w4 = transform(x, y, 0.2*self.l, 0.3*self.l, theta, 4)
+        self.w3 = transform(x, y, 0.4*self.l, 0.2*self.l, theta, 3)
+        self.w4 = transform(x, y, 0.4*self.l, 0.4*self.l, theta, 4)
         
         model = [
             Rectangle(self.c4, width=self.carl, height=self.carw, angle=degrees(theta), fc='y', ec='k'),

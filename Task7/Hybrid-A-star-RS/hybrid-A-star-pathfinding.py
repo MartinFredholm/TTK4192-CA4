@@ -5,6 +5,7 @@ import time
 import argparse
 import matplotlib.animation as animation
 from math import pi, tan, sqrt
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection, LineCollection
 from matplotlib.patches import Rectangle
@@ -16,7 +17,8 @@ from utils.car import SimpleCar
 from utils.environment import Environment_robplan
 from utils.reeds_shepp import RSPath
 from utils.astar import Astar
-from utils.utils import plot_a_car, get_discretized_thetas, round_theta, same_point
+from utils.utils import plot_a_car, get_discretized_thetas, round_theta, same_point,distance
+
 
 
 """ ---------------------------------------------------------------
@@ -56,9 +58,9 @@ class HybridAstar:
         
         self.w1 = 0.95 # weight for astar heuristic
         self.w2 = 0.05 # weight for simple heuristic
-        self.w3 = 0.30 # weight for extra cost of steering angle change
-        self.w4 = 0.10 # weight for extra cost of turning
-        self.w5 = 2.00 # weight for extra cost of reversing
+        self.w3 = 1.0 # weight for extra cost of steering angle change
+        self.w4 = 1.0 # weight for extra cost of turning
+        self.w5 = 0 # weight for extra cost of reversing
 
         self.thetas = get_discretized_thetas(self.unit_theta)
     
@@ -163,7 +165,8 @@ class HybridAstar:
             best_ = open_[t]
             solutions_ = self.dubins.find_tangents(best_.pos,self.goal)
             d_route_, cost_, valid_ = self.dubins.best_tangent(solutions_)
-            if not valid_:
+            dist = distance(best.pos,self.goal)
+            if valid_ == False and dist < 1.5:
                 d_route_, cost_, valid_ = self.RSPath.get_best_path(best_.pos,self.goal)
         
             if valid_ and cost_ + best_.g_ < cost + best.g_:
@@ -223,7 +226,8 @@ class HybridAstar:
             # check RS path
             solutions = self.dubins.find_tangents(best.pos,self.goal)
             d_route, cost, valid = self.dubins.best_tangent(solutions)
-            if valid == False:
+            dist = distance(best.pos,self.goal)
+            if valid == False and dist < 1.5:
                 d_route, cost, valid = self.RSPath.get_best_path(best.pos,self.goal)
                 
             if valid:
@@ -315,7 +319,6 @@ def main_hybrid_a(heu,start_pos, end_pos,reverse, extra, grid_on):
     end_state = car.get_car_state(car.end_pos)
 
     # plot and annimation
-    
     fig, ax = plt.subplots(figsize=(6,6))
     ax.set_xlim(0, env.lx)
     ax.set_ylim(0, env.ly)
@@ -387,9 +390,9 @@ def main_hybrid_a(heu,start_pos, end_pos,reverse, extra, grid_on):
         return _path, _carl, _path1, _car
 
     ani = animation.FuncAnimation(fig, animate, init_func=init, frames=len(path),
-                                interval=100, repeat=True, blit=True)
+                                interval=200, repeat=True, blit=True)
 
-    # plt.show() 
+    plt.show() 
 
     # def animate(i):
 
@@ -428,7 +431,7 @@ def main_hybrid_a(heu,start_pos, end_pos,reverse, extra, grid_on):
     #                               interval=200, repeat=True, blit=True)
 
     
-    plt.show()
+    # plt.show()
 
 class Node:
     """ Hybrid A* tree node. """
@@ -494,7 +497,7 @@ if __name__ == '__main__':
     p.add_argument('-e', action='store_true', help='add extra cost or not')
     p.add_argument('-g', action='store_true', help='show grid or not')
     args = p.parse_args()
-    start_pos = [0.3, 0.3, 0]      # Here defined initial position [x,y,angle]
-    end_pos = [3.7, 2.2, -pi/2]     # Target point [x,y, angle]
-    main_hybrid_a(args.heu,start_pos,end_pos,True,False,True)
+    start_pos = [0.4, 0.3, 0]      # Here defined initial position [x,y,angle]
+    end_pos = [1.7, 0.3, pi/2]  # Target point [x,y, angle]
+    main_hybrid_a(args.heu,start_pos,end_pos,True,True,True)
     print("An optimal path was computed using hybrid A* algorithm")
