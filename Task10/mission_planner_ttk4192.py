@@ -37,7 +37,7 @@ import re
 from pathlib import Path
 from utils.reeds_shepp import RSPath
 from utils.utils import plot_a_car, get_discretized_thetas, round_theta, same_point,distance
-
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 
 """ ----------------------------------------------------------------------------------
@@ -51,30 +51,35 @@ version: 1.1
 
 # 1) Program here your AI planner 
 """
-Graph plan ---------------------------------------------------------------------------
+AI planner ---------------------------------------------------------------------------
 """
-class GraphPlan(object):
-    def __init__(self, domain, problem):
-        self.independentActions = []
-        self.noGoods = []
-        self.graph = []
+def run_STP_planner(run=False):
+    catkin_ws_src = str(Path.home() / "catkin_ws" / "src")
+    venv_activate = "source temporal-planning-main/bin/activate"
+    planner_dir = "temporal-planning-main/temporal-planning"
+    planner_cmd = (
+        "python2.7 bin/plan.py stp-2 "
+        f"\"{catkin_ws_src}/temporal-planning-main/temporal-planning/"
+            "domains/ttk4192/domain/PDDL_domain_1.pddl\" "
+        f"\"{catkin_ws_src}/temporal-planning-main/temporal-planning/"
+            "domains/ttk4192/problem/PDDL_problem_task11.pddl\""
+    )
 
-    def graphPlan(self):
-        # initialization
-        initState = self.initialState
+    command = f"""
+    cd "{catkin_ws_src}" && \
+    {venv_activate} && \
+    cd {planner_dir} && \
+    {planner_cmd}
+    """
+    if run:
+        process = subprocess.run(command, shell=True, executable="/bin/bash", check=True)
 
-    def extract(self, Graph, subGoals, level):
+    plan_file_path = os.path.join(catkin_ws_src, planner_dir, "tmp_sas_plan.1")
 
-        if level == 0:
-            return []
-        if subGoals in self.noGoods[level]:
-            return None
-        plan = self.gpSearch(Graph, subGoals, [], level)
-        if plan is not None:
-            return plan
-        self.noGoods[level].append([subGoals])
-        return None
+    with open(plan_file_path, "r") as plan_file:
+        plan_output = plan_file.read()
 
+    return plan_output
 
 #2) GNC module (path-followig and PID controller for the robot)
 """  Robot GNC module ----------------------------------------------------------------------
@@ -128,7 +133,7 @@ class turtlebot_move():
     Path-following module
     """
     def __init__(self):
-        rospy.init_node('turtlebot_move', anonymous=False)
+        #rospy.init_node('turtlebot_move', anonymous=False)
         rospy.loginfo("Press CTRL + C to terminate")
         rospy.on_shutdown(self.stop)
 
@@ -518,14 +523,38 @@ def main_hybrid_a(heu,start_pos, end_pos,reverse, extra, grid_on):
             yl_np1.append(path[i].pos[1])            
         elif dt_s*i<len(path):
             xl_np1.append(path[i*dt_s].pos[0])
-            yl_np1.append(path[i*dt_s].pos[1])      
+            yl_np1.append(path[i*dt_s].pos[1])
+    xl_np1.append(path[-1].pos[0]) # Adding the last point to the path
+    yl_np1.append(path[-1].pos[1]) # Adding the last point to the path
+
     # defining way-points (traslandado el origen a (0,0))
     xl_np=np.array(xl_np1)
-    xl_np=xl_np#-3.48
+    xl_np=xl_np#-0.2
     yl_np=np.array(yl_np1)
-    yl_np=yl_np#-1.19
+    yl_np=yl_np#-0.3
     global WAYPOINTS
     WAYPOINTS=np.column_stack([xl_np,yl_np])
+    print(WAYPOINTS)
+
+    # Removing redundant waypoints
+    def prune_path(WP):
+        tol = 0.1
+        pts = WP.tolist()
+        i = 1
+        while i < len(pts) - 1:
+            x1, y1 = pts[i-1]
+            x2, y2 = pts[i]
+            x3, y3 = pts[i+1]
+            if (abs(x2-x1)<tol and abs(x3-x2) < tol) or (abs(y2-y1)<tol and abs(y3-y2) < tol):
+                pts.pop(i)
+            elif x2 == x3 and y2 == y3:
+                pts.pop(i)
+            else:
+                i += 1
+        return np.array(pts)
+    
+    WAYPOINTS = prune_path(WAYPOINTS)
+    print("Waypoints after removing redundant ones:")
     print(WAYPOINTS)
     
     start_state = car.get_car_state(car.start_pos)
@@ -754,6 +783,42 @@ def taking_photo_exe():
     # shutil.move(str(file_source / g), file_destination)
     rospy.sleep(1)
 
+
+def move_robot_arm(joint_positions_rad, duration=5):
+    pub = rospy.Publisher('/arm_controller/command', JointTrajectory, queue_size=1)
+
+    traj = JointTrajectory() # Constructs empty JointTrajectory message to be sent
+    traj.joint_names = ['joint1', 'joint2', 'joint3', 'joint4'] # Adding the joint names to the message
+
+    pt = JointTrajectoryPoint() # Constructs empty point message to be added to the trajectory message
+    pt.positions = joint_positions_rad
+    pt.time_from_start = rospy.Duration(duration)
+
+    traj.points = [pt]
+
+    rospy.sleep(0.5) 
+    pub.publish(traj)
+    rospy.loginfo("Arm command sent")
+    rospy.sleep(duration)  # wait for the arm to finish moving
+
+def move_gripper(position, duration=2):
+    pub = rospy.Publisher('/gripper_controller/command', JointTrajectory, queue_size=1)
+
+    traj = JointTrajectory() # Constructs empty JointTrajectory message to be sent
+    traj.joint_names = ['gripper'] # Adding the joint names to the message
+    
+    pt = JointTrajectoryPoint() # Constructs empty point message to be added to the trajectory message
+    pt.positions = [position]
+    pt.time_from_start = rospy.Duration(duration)
+
+    traj.points = [pt]
+
+    rospy.sleep(0.5)
+    pub.publish(traj)
+    rospy.loginfo("Gripper command sent")
+    rospy.sleep(duration)  # wait for the gripper to finish moving
+
+
 def move_robot(start_pos, end_pos):
     print("Moving robot between ", start_pos, "and ", end_pos)
     reverse = True
@@ -782,10 +847,25 @@ def move_robot(start_pos, end_pos):
     turtlebot_move()
 
 
-def Manipulate_OpenManipulator_x():
-    print("Executing manipulate a weight")
-    # TODO Do some manipulation (task 9c)    
+def pick_object():
+    print("Picking object")
+    move_robot_arm([-pi/2, pi/4, 0.1, 0.0], 5)
+    move_gripper(-0.02, 2)
+    move_robot_arm([0.0, -pi/2, 0.0, 0.0], 5)
+    #move_gripper(0.02, 2)
+    
+def do_some_inspection():
+    print("Doing some inspection")
+    move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
+    print("Taking picture ...")
+    taking_photo_exe()
     time.sleep(5)
+    move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
+    print("Taking picture ...")
+    taking_photo_exe()
+    time.sleep(5)
+    move_robot_arm([0.0, -pi/2, 0.0, 0.0], 5)
+
 
 def making_turn_exe():
     print("Executing Make a turn")
@@ -836,29 +916,14 @@ def making_turn_exe():
     #rospy.spin()
 
 def check_pump_picture_ir_waypoint0():
-    a=0
-    while a<3:
-        print("Manipulating the pump ...")
-        Manipulate_OpenManipulator_x()
-        print("Taking IR picture at waypoint0 ...")
-        taking_photo_exe()
-        time.sleep(1)
-        a=a+1
-    time.sleep(5)
-
+    print("Manipulating the pump ...")
+    do_some_inspection()
+    pick_object()
+    
 def check_seals_valve_picture_eo_waypoint0():
-    a=0
-    while a<3:
-        print("Manipulating the valve ...")
-        Manipulate_OpenManipulator_x()
-        time.sleep(1)
-        print("Taking EO picture at waypoint0 ...")
-        taking_photo_exe()
-        time.sleep(1)
-        a=a+1
-    time.sleep(5)
-
-# Charging battery 
+    print("Checking seals valve ...")
+    do_some_inspection()
+    
 def charge_battery_waypoint0():
     print("chargin battert")
     time.sleep(5)
@@ -896,6 +961,12 @@ def parse_stp_plan(plan_text):
 """
 if __name__ == '__main__':
     try:
+        rospy.init_node('mission_planner', anonymous=True)
+        rospy.loginfo("Starting mission planner")
+        rospy.sleep(1)
+    except rospy.ROSInterruptException:
+        pass
+    try:
         print()
         print("************ TTK4192 - Assigment 4 **************************")
         print()
@@ -909,7 +980,14 @@ if __name__ == '__main__':
         print()
         print("Press Intro to start ...")
         input_t=input("")
+
         # 5.0) Testing the GNC module (uncomment lines to test)
+        # move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
+        # move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
+        # move_robot_arm([0.0, 0.0, 0.0, 0.0], 5)
+        # move_gripper(0.0, 2)
+        # move_gripper(-0.02, 2)
+        # move_robot_arm([-pi/2, -pi/2, 0.0, 0.0], 5)
 
         run_GNC_test = False
 
@@ -931,45 +1009,17 @@ if __name__ == '__main__':
             wp_5 = [x_wp[5],y_wp[5],theta_wp[5]]
             wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
             start_pos = wp_2
-            end_pos = wp_6
+            end_pos = wp_0
             main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
             print("Executing path following")
             turtlebot_move()
 
 		# 5.1) Starting the AI Planner
-        # Ubuntu username
-        catkin_ws_src = str(Path.home() / "catkin_ws" / "src")
-        venv_activate = "source temporal-planning-main/bin/activate"
-        planner_dir = "temporal-planning-main/temporal-planning"
-        planner_cmd = (
-            "python2.7 bin/plan.py stp-2 "
-            f"\"{catkin_ws_src}/temporal-planning-main/temporal-planning/"
-              "domains/ttk4192/domain/PDDL_domain_1.pddl\" "
-            f"\"{catkin_ws_src}/temporal-planning-main/temporal-planning/"
-              "domains/ttk4192/problem/PDDL_problem_task11.pddl\""
-        )
-
-        command = f"""
-        cd "{catkin_ws_src}" && \
-        {venv_activate} && \
-        cd {planner_dir} && \
-        {planner_cmd}
-        """
-
-        #process = subprocess.run(command, shell=True, executable="/bin/bash", check=True)
-
-        plan_file_path = os.path.join(catkin_ws_src, planner_dir, "tmp_sas_plan.1")
-
-        with open(plan_file_path, "r") as plan_file:
-            plan_output = plan_file.read()
-
+        plan_output = run_STP_planner(False)
         print("STP Plan Output:\n")
         print(plan_output)
     
         # 5.2) Reading the plan 
-        # TODO Take content of plan_output and make it into useful commands
-        # AI parser:
-
         print("  ")
         print("Reading the plan from AI planner")
         print("  ")
@@ -984,6 +1034,7 @@ if __name__ == '__main__':
         print("")
         print("Starting mission execution")
         action_number = 0
+
         for action in action_names:
             print("Executing action:", action)
             if action == "move_robot":
@@ -993,7 +1044,7 @@ if __name__ == '__main__':
                 end_pos = action_arguments[2]
                 print("Endpos:", end_pos)
                 move_robot(start_pos, end_pos)
-            elif action == "check_pump_picture_ir":
+            elif action == "take_photo_of_pump":
                 check_pump_picture_ir_waypoint0()
             elif action == "check_seals_valve_picture_eo":
                 check_seals_valve_picture_eo_waypoint0()
@@ -1001,10 +1052,8 @@ if __name__ == '__main__':
                 charge_battery_waypoint0()
             else:
                 print("Unknown action:", action)
-            action_number += 1
 
-        # # Start simulations with battery = 100%
-        # battery=100
+            action_number += 1
 
         print("")
         print("--------------------------------------")
