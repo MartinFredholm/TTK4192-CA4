@@ -24,6 +24,7 @@ import copy
 # Import here the packages used in your codes
 from gnc_robot_modules.gnc_module import *
 from pathfinding_modules.hybrid_a_star import *
+from pathfinding_modules.astar import *
 import subprocess
 import re
 from pathlib import Path
@@ -197,8 +198,8 @@ def move_gripper(position, duration=2):
 
     return client.get_result()
 
-def move_robot_to_waypoint(end_pos):
-    print("Moving robot to ", end_pos)
+def move_robot_to_waypoint(end_pos_str):
+    print("Moving robot to ", end_pos_str)
     current_pos = get_current_odom()
     print("Current position:", current_pos)
     reverse = True
@@ -218,13 +219,16 @@ def move_robot_to_waypoint(end_pos):
     wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
 
     waypoints = [wp_0, wp_1, wp_2, wp_3, wp_4, wp_5, wp_6]
-    end_pos = waypoints[int(end_pos[-1])]
-    WAYPOINTS = main_hybrid_a(heu,current_pos,end_pos,reverse,add_extra_cost,grid_on)
+    end_pos = waypoints[int(end_pos_str[-1])]
+    # WAYPOINTS = main_hybrid_a(heu,current_pos,end_pos,reverse,add_extra_cost,grid_on)
+    WAYPOINTS = main_astar(True, current_pos, end_pos)
     print("Executing path following")
-    turtlebot_move(WAYPOINTS)
+    theta_real = [0, pi/2, -pi/2, pi, pi, pi/2, pi/2]
+    print("End theta:", theta_real[int(end_pos_str[-1])])
+    turtlebot_move(WAYPOINTS, theta_real[int(end_pos_str[-1])])
 
-def move_robot_between_wp(start_pos, end_pos):
-    print("Moving robot between ", start_pos, "and ", end_pos)
+def move_robot_between_wp(start_pos_str, end_pos_str):
+    print("Moving robot between ", start_pos_str, "and ", end_pos_str)
     reverse = True
     add_extra_cost = False
     grid_on = False
@@ -232,7 +236,8 @@ def move_robot_between_wp(start_pos, end_pos):
 
     x_wp = [0.3,  1.7, 3.48, 3.33, 5, 0.93 , 3.75]
     y_wp = [0.3, 0.3, 1.2, 2.4, 0.45, 2.4, 1.4]
-    theta_wp = [0, 0, pi, pi, pi, -pi/4, 0]
+    theta_real = [0, 0, pi, pi, pi, pi/2, 0]
+    theta_wp = [0, 0, pi, pi, pi, pi/2, 0]
     wp_0 = [x_wp[0],y_wp[0],theta_wp[0]]
     wp_1 = [x_wp[1],y_wp[1],theta_wp[1]]
     wp_2 = [x_wp[2], y_wp[2], theta_wp[2]]
@@ -242,13 +247,16 @@ def move_robot_between_wp(start_pos, end_pos):
     wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
 
     waypoints = [wp_0, wp_1, wp_2, wp_3, wp_4, wp_5, wp_6]
-    start_pos = waypoints[int(start_pos[-1])]
-    end_pos = waypoints[int(end_pos[-1])]
+    start_pos = waypoints[int(start_pos_str[-1])]
+    end_pos = waypoints[int(end_pos_str[-1])]
     print("Startpos inside moverobot:", start_pos)
     print("Endpos inside moverobot:", end_pos)
-    WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+    # WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+    WAYPOINTS = main_astar(True, start_pos, end_pos)
     print("Executing path following")
-    turtlebot_move(WAYPOINTS)
+    theta_real = [0, pi/2, -pi/2, pi, pi, pi/2, pi/2]
+    print("End theta:", theta_real[int(end_pos_str[-1])])
+    turtlebot_move(WAYPOINTS, theta_real[int(end_pos_str[-1])])
 
 
 def pick_object():
@@ -263,17 +271,17 @@ def do_some_inspection():
     move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
     print("Taking picture ...")
     taking_photo_exe()
-    time.sleep(5)
+    rospy.sleep(2)
     move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
     print("Taking picture ...")
     taking_photo_exe()
-    time.sleep(5)
+    rospy.sleep(2)
     move_robot_arm([0.0, -pi/2, 0.0, 0.0], 5)
 
 
 def making_turn_exe():
     print("Executing Make a turn")
-    time.sleep(1)
+    rospy.sleep(1)
     #Starts a new node
     #rospy.init_node('turtlebot_move', anonymous=True)
     velocity_publisher = rospy.Publisher('cmd_vel', Twist, queue_size=10)
@@ -331,7 +339,7 @@ def check_seals_valve_picture_eo_waypoint0():
     
 def charge_battery_waypoint0():
     print("chargin battert")
-    time.sleep(5)
+    rospy.sleep(5)
 
 def get_current_odom():
     # Get the current odometry data
@@ -395,7 +403,7 @@ if __name__ == '__main__':
         # move_robot_arm([0.0, 0.0, 0.0, 0.0], 5)
         # move_gripper(0.0, 2)
         # move_gripper(-0.02, 2)
-        move_robot_arm([-pi/2, -pi/2, 0.0, 0.0], 5)
+        move_robot_arm([0.0, -pi/2, 0.0, 0.0], 5)
 
         move_robot_to_waypoint("wp_2")
 
@@ -420,7 +428,8 @@ if __name__ == '__main__':
             wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
             start_pos = wp_2
             end_pos = wp_0
-            WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+            # WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+            WAYPOINTS = main_astar(True, start_pos, end_pos)
             print("Executing path following")
             turtlebot_move(WAYPOINTS)
 

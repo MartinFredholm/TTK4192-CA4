@@ -28,8 +28,8 @@ class Grid:
         self.grid = [[0] * self.m for _ in range(self.n)]
 
         for ob in self.env.obs:
-            x1, y1 = self.to_cell_id([ob.x, ob.y])
-            x2, y2 = self.to_cell_id([ob.x+ob.w, ob.y+ob.h])
+            x1, y1 = self.to_cell_id([ob.obs[0][0], ob.obs[0][1]])
+            x2, y2 = self.to_cell_id([ob.obs[2][0], ob.obs[2][1]])
 
             if (ob.x+ob.w) % self.cell_size == 0:
                 x2 -= 1

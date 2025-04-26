@@ -58,7 +58,7 @@ class turtlebot_move():
     """
     Path-following module
     """
-    def __init__(self, WAYPOINTS):
+    def __init__(self, WAYPOINTS, end_theta=0):
         #rospy.init_node('turtlebot_move', anonymous=False)
         rospy.loginfo("Press CTRL + C to terminate")
         rospy.on_shutdown(self.stop)
@@ -80,6 +80,8 @@ class turtlebot_move():
             self.move_to_point(point[0], point[1])
             #rospy.sleep(1)
         self.stop()
+        # turn to the end angle
+        self.turn_to_angle(end_theta)
         rospy.logwarn("Action done.")
 
         # plot trajectory
@@ -142,6 +144,26 @@ class turtlebot_move():
             self.vel_pub.publish(self.vel)
             self.rate.sleep()
         self.stop()
+
+    # Turn the robot to a specific angle
+    def turn_to_angle(self, angle):
+        print("### PID: set target theta = " + str(angle) + " ###")
+        self.pid_theta.setPoint(angle)
+        self.pid_theta.setPID(1, 0.02, 0.2)  # PID control while moving
+        while not rospy.is_shutdown():
+            angular = self.pid_theta.update(self.theta)
+            if abs(angular) > 0.2:
+                angular = angular/abs(angular)*0.2
+            if abs(angular) < 0.01:
+                break
+            self.vel.linear.x = 0
+            self.vel.angular.z = angular
+            self.vel_pub.publish(self.vel)
+            self.rate.sleep()
+        self.stop()
+
+
+
     def stop(self):
         self.vel.linear.x = 0
         self.vel.angular.z = 0
