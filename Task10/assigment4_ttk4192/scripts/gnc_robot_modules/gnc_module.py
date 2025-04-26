@@ -78,7 +78,7 @@ class turtlebot_move():
         # track a sequence of waypoints
         for point in WAYPOINTS:
             self.move_to_point(point[0], point[1])
-            rospy.sleep(1)
+            #rospy.sleep(1)
         self.stop()
         rospy.logwarn("Action done.")
 
@@ -118,7 +118,7 @@ class turtlebot_move():
             self.rate.sleep()
 
         # Have a rest
-        self.stop()
+        #self.stop()
         self.pid_theta.setPoint(theta)
         self.pid_theta.setPID(1, 0.02, 0.2)  # PID control while moving
 

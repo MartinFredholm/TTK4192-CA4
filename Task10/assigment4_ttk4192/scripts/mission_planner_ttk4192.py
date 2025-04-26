@@ -14,17 +14,7 @@ import fileinput
 import sys
 import argparse
 import random
-import matplotlib.animation as animation
 from datetime import datetime
-from matplotlib.collections import PatchCollection, LineCollection
-from matplotlib.patches import Rectangle
-from itertools import product
-from utils.astar import Astar
-from utils.utils import plot_a_car, get_discretized_thetas, round_theta, same_point
-from utils.dubins_path import DubinsPath
-from utils.environment import Environment_robplan
-from utils.grid import Grid_robplan
-from utils.car import SimpleCar
 import cv2
 from std_msgs.msg import String
 from sensor_msgs.msg import Image
@@ -33,12 +23,13 @@ import shutil
 import copy
 # Import here the packages used in your codes
 from gnc_robot_modules.gnc_module import *
+from pathfinding_modules.hybrid_a_star import *
 import subprocess
 import re
 from pathlib import Path
-from utils.reeds_shepp import RSPath
-from utils.utils import plot_a_car, get_discretized_thetas, round_theta, same_point,distance
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from trajectory_msgs.msg import JointTrajectoryPoint
+from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+import actionlib
 
 
 """ ----------------------------------------------------------------------------------
@@ -48,6 +39,11 @@ characteristics: AI planning,GNC, hybrid A*, ROS.
 robot: Turtlebot3
 version: 1.1
 """ 
+
+# Define the global varible: WAYPOINTS  Wpts=[[x_i,y_i]];
+global WAYPOINTS
+WAYPOINTS = [[2,2],[1,0.5]]
+
 
 # 1) Program here your AI planner 
 """
@@ -81,476 +77,6 @@ def run_STP_planner(run=False):
 
     return plan_output
 
-
-
-
-# 3) Program here your path-finding algorithm
-""" Hybrid A-star pathfinding --------------------------------------------------------------------
-"""
-
-class HybridAstar:
-    """ Hybrid A* search procedure. """
-    def __init__(self, car, grid, reverse, unit_theta=pi/12, dt=5e-2):
-        self.car = car
-        self.grid = grid
-        self.reverse = reverse
-        self.unit_theta = unit_theta
-        self.dt = dt
-
-        self.start = self.car.start_pos
-        self.goal = self.car.end_pos
-
-        self.r = self.car.l / tan(self.car.max_phi)
-        self.drive_steps = int(sqrt(2)*self.grid.cell_size/self.dt) + 1
-        self.arc = self.drive_steps * self.dt
-        self.phil = [-self.car.max_phi, 0, self.car.max_phi]
-        self.ml = [1, -1]
-
-        if reverse:
-            self.comb = list(product(self.ml, self.phil))
-        else:
-            self.comb = list(product([1], self.phil))
-
-        self.RSPath = RSPath(self.car)  
-        self.dubins = DubinsPath(car,False)
-        self.astar = Astar(self.grid, self.goal[:2])
-        
-        self.w1 = 0.95 # weight for astar heuristic
-        self.w2 = 0.05 # weight for simple heuristic
-        self.w3 = 1.0 # weight for extra cost of steering angle change
-        self.w4 = 1.0 # weight for extra cost of turning
-        self.w5 = 0 # weight for extra cost of reversing
-
-        self.thetas = get_discretized_thetas(self.unit_theta)
-    
-    def construct_node(self, pos):
-        """ Create node for a pos. """
-
-        theta = pos[2]
-        pt = pos[:2]
-
-        theta = round_theta(theta % (2*pi), self.thetas)
-        
-        cell_id = self.grid.to_cell_id(pt)
-        grid_pos = cell_id + [theta]
-
-        node = Node(grid_pos, pos)
-
-        return node
-    
-    def simple_heuristic(self, pos):
-        """ Heuristic by Manhattan distance. """
-
-        return abs(self.goal[0]-pos[0]) + abs(self.goal[1]-pos[1])
-        
-    def astar_heuristic(self, pos):
-        """ Heuristic by standard astar. """
-
-        h2 = self.simple_heuristic(pos[:2])
-        try:
-            h1 = self.astar.search_path(pos[:2]) * self.grid.cell_size
-        except TypeError:
-            h1 = h2
-        return self.w1*h1 + self.w2*h2
-
-    def get_children(self, node, heu, extra):
-        """ Get successors from a state. """
-
-        children = []
-        for m, phi in self.comb:
-
-            # don't go back
-            # if node.m and node.phi == phi and node.m*m == -1:
-            #     continue
-
-            # if node.m and node.m == 1 and m == -1:
-            #     continue
-
-            pos = node.pos
-            branch = [m, pos[:2]]
-
-            for _ in range(self.drive_steps):
-                pos = self.car.step(pos, phi, m,self.dt)
-                branch.append(pos[:2])
-
-            # check safety of route-----------------------
-            pos1 = node.pos if m == 1 else pos
-            pos2 = pos if m == 1 else node.pos
-            if phi == 0:
-                safe = self.RSPath.is_straight_route_safe(pos1, pos2)
-            else:
-                d, c, r = self.car.get_params(pos1, phi)
-                safe = self.RSPath.is_turning_route_safe(pos1, pos2, d, c, r)
-            # --------------------------------------------
-            
-            if not safe:
-                continue
-            
-            child = self.construct_node(pos)
-            child.phi = phi
-            child.m = m
-            child.parent = node
-            child.g = node.g + self.arc
-            child.g_ = node.g_ + self.arc
-
-            if extra:
-                # extra cost for changing steering angle
-                if phi != node.phi:
-                    child.g += self.w3 * self.arc
-                
-                # extra cost for turning
-                if phi != 0:
-                    child.g += self.w4 * self.arc
-                
-                # extra cost for reverse
-                if m == -1:
-                    child.g += self.w5 * self.arc
-
-            if heu == 0:
-                child.f = child.g + self.simple_heuristic(child.pos)
-            if heu == 1:
-                child.f = child.g + self.astar_heuristic(child.pos)
-            
-            children.append([child, branch])
-
-        return children
-    
-    def best_final_shot(self, open_, closed_, best, cost, d_route, n=10):
-        """ Search best final shot in open set. """
-
-        open_.sort(key=lambda x: x.f, reverse=False)
-
-        for t in range(min(n, len(open_))):
-            best_ = open_[t]
-            solutions_ = self.dubins.find_tangents(best_.pos,self.goal)
-            d_route_, cost_, valid_ = self.dubins.best_tangent(solutions_)
-            dist = distance(best.pos,self.goal)
-            if valid_ == False and dist < 1.5:
-                d_route_, cost_, valid_ = self.RSPath.get_best_path(best_.pos,self.goal)
-        
-            if valid_ and cost_ + best_.g_ < cost + best.g_:
-                best = best_
-                cost = cost_
-                d_route = d_route_
-        
-        if best in open_:
-            open_.remove(best)
-            closed_.append(best)
-        
-        return best, cost, d_route
-    
-    def backtracking(self, node):
-        """ Backtracking the path. """
-
-        route = []
-        while node.parent:
-            route.append((node.pos, node.phi, node.m))
-            node = node.parent
-        
-        return list(reversed(route))
-    
-    def search_path(self, heu=1, extra=False):
-        """ Hybrid A* pathfinding. """
-
-        root = self.construct_node(self.start)
-        root.g = float(0)
-        root.g_ = float(0)
-        
-        if heu == 0:
-            root.f = root.g + self.simple_heuristic(root.pos)
-        if heu == 1:
-            root.f = root.g + self.astar_heuristic(root.pos)
-
-        closed_ = []
-        open_ = [root]
-
-        count = 0
-        print(f"Count: {count}")
-        print(f"Open nodes: {len(open_)}")
-        print(f"Closed nodes: {len(closed_)}")
-        while open_:
-            count += 1
-            if count % 1 == 0:
-                sys.stdout.write("\033[3A")  # Move up 3 lines
-                sys.stdout.write(f"Count: {count}\n")
-                sys.stdout.write(f"Open nodes: {len(open_)}\n")
-                sys.stdout.write(f"Closed nodes: {len(closed_)}\n")
-                sys.stdout.flush()
-
-            best = min(open_, key=lambda x: x.f)
-
-            open_.remove(best)
-            closed_.append(best)
-
-            # check RS path
-            solutions = self.dubins.find_tangents(best.pos,self.goal)
-            d_route, cost, valid = self.dubins.best_tangent(solutions)
-            dist = distance(best.pos,self.goal)
-            if valid == False and dist < 1.5:
-                d_route, cost, valid = self.RSPath.get_best_path(best.pos,self.goal)
-                
-            if valid:
-                best, cost, d_route = self.best_final_shot(open_, closed_, best, cost, d_route)
-                route = self.backtracking(best) + d_route
-                path = self.car.get_path(self.start, route) 
-                cost += best.g_
-                print('Shortest path: {}'.format(round(cost, 2)))
-                print('Total iteration:', count)
-                
-                return path, closed_
-
-            children = self.get_children(best, heu, extra)
-
-            for child, branch in children:
-
-                if child in closed_:
-                    continue
-
-                if child not in open_:
-                    best.branches.append(branch)
-                    open_.append(child)
-
-                elif child.g < open_[open_.index(child)].g:
-                    best.branches.append(branch)
-
-                    c = open_[open_.index(child)]
-                    p = c.parent
-                    for b in p.branches:
-                        if same_point(b[-1], c.pos[:2]):
-                            p.branches.remove(b)
-                            break
-                    
-                    open_.remove(child)
-                    open_.append(child)
-
-        return None, None
-
-
-def main_hybrid_a(heu,start_pos, end_pos,reverse, extra, grid_on):
-
-    tc = map_grid_robplan()
-    env = Environment_robplan(tc.obs)
-    car = SimpleCar(env, start_pos, end_pos)
-    grid = Grid_robplan(env)
-
-    hastar = HybridAstar(car, grid, reverse)
-
-    t = time.time()
-    path, closed_ = hastar.search_path(heu, extra)
-    print('Total time: {}s'.format(round(time.time()-t, 3)))
-
-    if not path:
-        print('No valid path!')
-        return
-    # a post-processing is required to have path list
-    path = path[::5] + [path[-1]]
-    #for i in range(len(path)):
-    #    print(path[i].pos[0])
-    
-    branches = []
-    bcolors = []
-    for node in closed_:
-        for b in node.branches:
-            branches.append(b[1:])
-            bcolors.append('y' if b[0] == 1 else 'b')
-
-    xl, yl = [], []
-    xl_np1,yl_np1=[],[]
-    carl = []
-    dt_s=int(5)  # samples for gazebo simulator
-    for i in range(len(path)):
-        xl.append(path[i].pos[0])
-        yl.append(path[i].pos[1])
-        carl.append(path[i].model[0])
-        if i==0 or i==len(path):
-            xl_np1.append(path[i].pos[0])
-            yl_np1.append(path[i].pos[1])            
-        elif dt_s*i<len(path):
-            xl_np1.append(path[i*dt_s].pos[0])
-            yl_np1.append(path[i*dt_s].pos[1])
-    xl_np1.append(path[-1].pos[0]) # Adding the last point to the path
-    yl_np1.append(path[-1].pos[1]) # Adding the last point to the path
-
-    # defining way-points (traslandado el origen a (0,0))
-    xl_np=np.array(xl_np1)
-    xl_np=xl_np#-0.2
-    yl_np=np.array(yl_np1)
-    yl_np=yl_np#-0.3
-    global WAYPOINTS
-    WAYPOINTS=np.column_stack([xl_np,yl_np])
-    print(WAYPOINTS)
-
-    # Removing redundant waypoints
-    def prune_path(WP):
-        tol = 0.1
-        pts = WP.tolist()
-        i = 1
-        while i < len(pts) - 1:
-            x1, y1 = pts[i-1]
-            x2, y2 = pts[i]
-            x3, y3 = pts[i+1]
-            if (abs(x2-x1)<tol and abs(x3-x2) < tol) or (abs(y2-y1)<tol and abs(y3-y2) < tol):
-                pts.pop(i)
-            elif x2 == x3 and y2 == y3:
-                pts.pop(i)
-            else:
-                i += 1
-        return np.array(pts)
-    
-    WAYPOINTS = prune_path(WAYPOINTS)
-    print("Waypoints after removing redundant ones:")
-    print(WAYPOINTS)
-    
-    start_state = car.get_car_state(car.start_pos)
-    end_state = car.get_car_state(car.end_pos)
-
-    #plot and annimation
-    fig, ax = plt.subplots(figsize=(6,6))
-    ax.set_xlim(0, env.lx)
-    ax.set_ylim(0, env.ly)
-    ax.set_aspect("equal")
-
-    if grid_on:
-        ax.set_xticks(np.arange(0, env.lx, grid.cell_size))
-        ax.set_yticks(np.arange(0, env.ly, grid.cell_size))
-        ax.set_xticklabels([])
-        ax.set_yticklabels([])
-        ax.tick_params(length=0)
-        plt.grid(which='both')
-    else:
-        ax.set_xticks([])
-        ax.set_yticks([])
-    
-    for ob in env.obs:
-        ax.add_patch(Rectangle((ob.x, ob.y), ob.w, ob.h, fc='gray', ec='k'))
-    
-    ax.plot(car.start_pos[0], car.start_pos[1], 'ro', markersize=6)
-    ax = plot_a_car(ax, end_state.model)
-    ax = plot_a_car(ax, start_state.model)
-
-    # _branches = LineCollection(branches, color='b', alpha=0.8, linewidth=1)
-    # ax.add_collection(_branches)
-
-    # _carl = PatchCollection(carl[::20], color='m', alpha=0.1, zorder=3)
-    # ax.add_collection(_carl)
-    # ax.plot(xl, yl, color='whitesmoke', linewidth=2, zorder=3)
-    # _car = PatchCollection(path[-1].model, match_original=True, zorder=4)
-    # ax.add_collection(_car)
-
-    _branches = LineCollection([], linewidth=1)
-    ax.add_collection(_branches)
-
-    _path, = ax.plot([], [], color='lime', linewidth=2)
-    _carl = PatchCollection([])
-    ax.add_collection(_carl)
-    _path1, = ax.plot([], [], color='w', linewidth=2)
-    _car = PatchCollection([])
-    ax.add_collection(_car)
-    
-    frames = len(branches) + len(path) + 1
-
-    def init():
-        _branches.set_paths([])
-        _path.set_data([], [])
-        _carl.set_paths([])
-        _path1.set_data([], [])
-        _car.set_paths([])
-
-        return _branches, _path, _carl, _path1, _car
-
-    def animate(i):
-
-        edgecolor = ['k']*5 + ['r']
-        facecolor = ['y'] + ['k']*4 + ['r']
-
-        if i < len(branches):
-            _branches.set_paths(branches[:i+1])
-            _branches.set_color(bcolors)
-        
-        else:
-            _branches.set_paths(branches)
-
-            j = i - len(branches)
-
-            _path.set_data(xl[min(j, len(path)-1):], yl[min(j, len(path)-1):])
-
-            sub_carl = carl[:min(j+1, len(path))]
-            _carl.set_paths(sub_carl[::4])
-            _carl.set_edgecolor('k')
-            _carl.set_facecolor('m')
-            _carl.set_alpha(0.1)
-            _carl.set_zorder(3)
-
-            _path1.set_data(xl[:min(j+1, len(path))], yl[:min(j+1, len(path))])
-            _path1.set_zorder(3)
-
-            _car.set_paths(path[min(j, len(path)-1)].model)
-            _car.set_edgecolor(edgecolor)
-            _car.set_facecolor(facecolor)
-            _car.set_zorder(3)
-
-        return _branches, _path, _carl, _path1, _car
-
-    ani = animation.FuncAnimation(fig, animate, init_func=init, frames=frames,
-                                  interval=1, repeat=True, blit=True)
-
-    plt.show()
-
-class Node:
-    """ Hybrid A* tree node. """
-
-    def __init__(self, grid_pos, pos):
-
-        self.grid_pos = grid_pos
-        self.pos = pos
-        self.g = None
-        self.g_ = None
-        self.f = None
-        self.parent = None
-        self.phi = 0
-        self.m = None
-        self.branches = []
-
-    def __eq__(self, other):
-
-        return self.grid_pos == other.grid_pos
-    
-    def __hash__(self):
-
-        return hash((self.grid_pos))
-    
-class map_grid_robplan:
-    """ Here the obstacles are defined for a 20x20 map. """
-    def __init__(self):
-
-        self.start_pos2 = [4, 4, 0]  # default values
-        self.end_pos2 = [4, 8, -pi]  # default
-        self.obs = [
-            # walls
-            [0,0, 3.3, 0.01],
-            [3.3,0,0.01, 0.2],
-            [3.3,0.2,5.21-3.3,0.01],
-            [0,0,0.01,1],
-            [0,1,0.5,0.01],
-            [0.5,1,0.01,0.2],
-            [0.5,1+0.2,-0.5,0],
-            [0,1.2,0.01,2.55+0.2-1.2],
-            [0,2.75,5.21,0.01],
-            [5.21,2.75,0.01,-2.55],
-            
-            # boxes
-            [1.3-0.2/2,1.85-0.4/2,0.2,0.4],
-            [2.4-0.4/2,1.85-0.4/2,0.4,0.4],
-
-            #valves
-            [1.77-0.5/2,0.73-0.2/2,0.5,0.2],
-            [3.48-0.5/2,.79-0.2/2,0.5,0.2],
-
-            #pump
-            [3.75-0.4/2,1.77-0.2/2,0.4,0.2],
-            
-
-        ]
 
 #4) Program here the turtlebot actions (based in your AI planner)
 """
@@ -629,41 +155,75 @@ def taking_photo_exe():
 
 
 def move_robot_arm(joint_positions_rad, duration=5):
-    pub = rospy.Publisher('/arm_controller/command', JointTrajectory, queue_size=1)
+    # Using /arm_controller/follow_trajectory/goal topic instead
+    client = actionlib.SimpleActionClient('/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+    client.wait_for_server()
 
-    traj = JointTrajectory() # Constructs empty JointTrajectory message to be sent
-    traj.joint_names = ['joint1', 'joint2', 'joint3', 'joint4'] # Adding the joint names to the message
+    goal = FollowJointTrajectoryGoal()
+    goal.trajectory.joint_names = ['joint1', 'joint2', 'joint3', 'joint4']
 
-    pt = JointTrajectoryPoint() # Constructs empty point message to be added to the trajectory message
+    pt = JointTrajectoryPoint()
     pt.positions = joint_positions_rad
     pt.time_from_start = rospy.Duration(duration)
+    goal.trajectory.points.append(pt)
 
-    traj.points = [pt]
+    client.send_goal(goal)
+    client.wait_for_result()
 
-    rospy.sleep(0.5) 
-    pub.publish(traj)
+    # Maybe add a sleep here to allow time for the action to complete
+
     rospy.loginfo("Arm command sent")
-    rospy.sleep(duration)  # wait for the arm to finish moving
+
+    return client.get_result()
 
 def move_gripper(position, duration=2):
-    pub = rospy.Publisher('/gripper_controller/command', JointTrajectory, queue_size=1)
+    client = actionlib.SimpleActionClient('/gripper_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+    client.wait_for_server()
 
-    traj = JointTrajectory() # Constructs empty JointTrajectory message to be sent
-    traj.joint_names = ['gripper'] # Adding the joint names to the message
-    
-    pt = JointTrajectoryPoint() # Constructs empty point message to be added to the trajectory message
+    goal = FollowJointTrajectoryGoal()
+    goal.trajectory.joint_names = ['gripper']
+
+    pt = JointTrajectoryPoint()
     pt.positions = [position]
     pt.time_from_start = rospy.Duration(duration)
+    goal.trajectory.points.append(pt)
 
-    traj.points = [pt]
+    client.send_goal(goal)
+    client.wait_for_result()
 
-    rospy.sleep(0.5)
-    pub.publish(traj)
+    # Maybe add a sleep here to allow time for the action to complete
+
     rospy.loginfo("Gripper command sent")
-    rospy.sleep(duration)  # wait for the gripper to finish moving
 
+    return client.get_result()
 
-def move_robot(start_pos, end_pos):
+def move_robot_to_waypoint(end_pos):
+    print("Moving robot to ", end_pos)
+    current_pos = get_current_odom()
+    print("Current position:", current_pos)
+    reverse = True
+    add_extra_cost = False
+    grid_on = False
+    heu = 1
+
+    x_wp = [0.3,  1.7, 3.48, 3.33, 5, 0.93 , 3.75]
+    y_wp = [0.3, 0.3, 1.2, 2.4, 0.45, 2.4, 1.4]
+    theta_wp = [0, 0, pi, pi, pi, -pi/4, 0]
+    wp_0 = [x_wp[0],y_wp[0],theta_wp[0]]
+    wp_1 = [x_wp[1],y_wp[1],theta_wp[1]]
+    wp_2 = [x_wp[2], y_wp[2], theta_wp[2]]
+    wp_3 = [x_wp[3],y_wp[3],theta_wp[3]]
+    wp_4 = [x_wp[4],y_wp[4],theta_wp[4]]
+    wp_5 = [x_wp[5],y_wp[5],theta_wp[5]]
+    wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
+
+    waypoints = [wp_0, wp_1, wp_2, wp_3, wp_4, wp_5, wp_6]
+    end_pos = waypoints[int(end_pos[-1])]
+    WAYPOINTS = main_hybrid_a(heu,current_pos,end_pos,reverse,add_extra_cost,grid_on)
+    print("Executing path following")
+    turtlebot_move(WAYPOINTS)
+
+def move_robot_between_wp(start_pos, end_pos):
     print("Moving robot between ", start_pos, "and ", end_pos)
     reverse = True
     add_extra_cost = False
@@ -686,7 +246,7 @@ def move_robot(start_pos, end_pos):
     end_pos = waypoints[int(end_pos[-1])]
     print("Startpos inside moverobot:", start_pos)
     print("Endpos inside moverobot:", end_pos)
-    main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+    WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
     print("Executing path following")
     turtlebot_move(WAYPOINTS)
 
@@ -759,6 +319,7 @@ def making_turn_exe():
     velocity_publisher.publish(vel_msg)
     #rospy.spin()
 
+
 def check_pump_picture_ir_waypoint0():
     print("Manipulating the pump ...")
     do_some_inspection()
@@ -772,11 +333,14 @@ def charge_battery_waypoint0():
     print("chargin battert")
     time.sleep(5)
 
-
-# Define the global varible: WAYPOINTS  Wpts=[[x_i,y_i]];
-global WAYPOINTS
-WAYPOINTS = [[2,2],[1,0.5]]
-
+def get_current_odom():
+    # Get the current odometry data
+    odom = rospy.wait_for_message("/odom", Odometry, timeout=5)
+    x = odom.pose.pose.position.x
+    y = odom.pose.pose.position.y
+    orientation = odom.pose.pose.orientation
+    _, _, theta = tf.transformations.euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
+    return [round(x, 2), round(y, 2), 0] # Need to be changed to theta
 
 # AI parser
 def parse_stp_plan(plan_text):
@@ -826,12 +390,14 @@ if __name__ == '__main__':
         input_t=input("")
 
         # 5.0) Testing the GNC module (uncomment lines to test)
-        # move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
+        #move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
         # move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
         # move_robot_arm([0.0, 0.0, 0.0, 0.0], 5)
         # move_gripper(0.0, 2)
         # move_gripper(-0.02, 2)
-        # move_robot_arm([-pi/2, -pi/2, 0.0, 0.0], 5)
+        move_robot_arm([-pi/2, -pi/2, 0.0, 0.0], 5)
+
+        move_robot_to_waypoint("wp_2")
 
         run_GNC_test = False
 
@@ -854,7 +420,7 @@ if __name__ == '__main__':
             wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
             start_pos = wp_2
             end_pos = wp_0
-            main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+            WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
             print("Executing path following")
             turtlebot_move(WAYPOINTS)
 
@@ -887,7 +453,7 @@ if __name__ == '__main__':
                 print("Startpos:", start_pos)
                 end_pos = action_arguments[2]
                 print("Endpos:", end_pos)
-                move_robot(start_pos, end_pos)
+                move_robot_between_wp(start_pos, end_pos)
             elif action == "take_photo_of_pump":
                 check_pump_picture_ir_waypoint0()
             elif action == "check_seals_valve_picture_eo":
