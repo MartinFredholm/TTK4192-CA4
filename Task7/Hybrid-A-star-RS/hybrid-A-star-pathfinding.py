@@ -497,7 +497,11 @@ if __name__ == '__main__':
     p.add_argument('-e', action='store_true', help='add extra cost or not')
     p.add_argument('-g', action='store_true', help='show grid or not')
     args = p.parse_args()
-    start_pos = [0.4, 0.3, 0]      # Here defined initial position [x,y,angle]
-    end_pos = [1.7, 0.3, pi/2]  # Target point [x,y, angle]
+    start_pos = [0.93, 2.4, -pi/4]    # Here defined initial position [x,y,angle]
+    end_pos = [5, 0.45, pi]  # Target point [x,y, angle]
     main_hybrid_a(args.heu,start_pos,end_pos,True,True,True)
     print("An optimal path was computed using hybrid A* algorithm")
+
+
+    # wpt0 = [0.4, 0.3, 0], wpt1 = [1.7, 0.3, 0], wpt2 = [3.48, 1.2, pi], wpt3 = [3.33, 2.4, pi], wtp4 = [5, 0.45, pi]
+    # wpt5 = [0.93, 2.4, -pi/4]  wpt6 = [3.75, 1.4, 0]
