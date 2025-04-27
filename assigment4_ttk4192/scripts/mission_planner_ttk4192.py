@@ -30,6 +30,7 @@ import re
 from pathlib import Path
 from trajectory_msgs.msg import JointTrajectoryPoint
 from control_msgs.msg import FollowJointTrajectoryAction, FollowJointTrajectoryGoal
+from sensor_msgs.msg import JointState
 import actionlib
 
 
@@ -155,39 +156,79 @@ def taking_photo_exe():
     rospy.sleep(1)
 
 
-def move_robot_arm(joint_positions_rad, duration=5):
-    # Using /arm_controller/follow_trajectory/goal topic instead
+# def move_robot_arm(joint_positions_rad, duration=5):
+#     # Using /arm_controller/follow_trajectory/goal topic instead
+#     client = actionlib.SimpleActionClient('/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
+#     client.wait_for_server()
+
+#     goal = FollowJointTrajectoryGoal()
+#     goal.trajectory.joint_names = ['joint1', 'joint2', 'joint3', 'joint4']
+
+#     pt = JointTrajectoryPoint()
+#     pt.positions = joint_positions_rad
+#     pt.time_from_start = rospy.Duration(duration)
+#     goal.trajectory.points.append(pt)
+
+#     client.send_goal(goal)
+#     client.wait_for_result()
+
+#     # Maybe add a sleep here to allow time for the action to complete
+
+#     rospy.loginfo("Arm command sent")
+
+#     return client.get_result()
+
+def move_robot_arm(joint_positions_rad, duration=5.0):
     client = actionlib.SimpleActionClient('/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
-    client.wait_for_server()
+    if not client.wait_for_server(rospy.Duration(5.0)):
+        rospy.logerr("Arm action‐server not available!")
+        return None
 
     goal = FollowJointTrajectoryGoal()
-    goal.trajectory.joint_names = ['joint1', 'joint2', 'joint3', 'joint4']
+    traj = goal.trajectory
+    traj.joint_names = ['joint1','joint2','joint3','joint4']
 
-    pt = JointTrajectoryPoint()
-    pt.positions = joint_positions_rad
-    pt.time_from_start = rospy.Duration(duration)
-    goal.trajectory.points.append(pt)
+    traj.header.stamp = rospy.Time.now() + rospy.Duration(0.1)
+
+    # Get current joint positions, and tell robot to move from there to desired position
+    js = rospy.wait_for_message('/joint_states', JointState, timeout=2.0)
+    p0 = JointTrajectoryPoint()
+    p0.positions = [ js.position[js.name.index(j)] for j in traj.joint_names ]
+    p0.time_from_start = rospy.Duration(0.0)
+    traj.points.append(p0)
+
+    p1 = JointTrajectoryPoint()
+    p1.positions = joint_positions_rad
+    p1.time_from_start = rospy.Duration(duration)
+    traj.points.append(p1)
 
     client.send_goal(goal)
     client.wait_for_result()
-
-    # Maybe add a sleep here to allow time for the action to complete
-
-    rospy.loginfo("Arm command sent")
-
+    rospy.loginfo(f"Arm moved over {duration:.1f}s")
     return client.get_result()
 
 def move_gripper(position, duration=2):
     client = actionlib.SimpleActionClient('/gripper_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
-    client.wait_for_server()
-
+    if not client.wait_for_server(rospy.Duration(5.0)):
+        rospy.logerr("Gripper action‐server not available!")
+        return None
+    
     goal = FollowJointTrajectoryGoal()
-    goal.trajectory.joint_names = ['gripper']
+    traj = goal.trajectory
+    traj.joint_names = ['gripper']
 
-    pt = JointTrajectoryPoint()
-    pt.positions = [position]
-    pt.time_from_start = rospy.Duration(duration)
-    goal.trajectory.points.append(pt)
+    traj.header.stamp = rospy.Time.now() + rospy.Duration(0.1)
+
+    js = rospy.wait_for_message('/joint_states', JointState, timeout=2.0)
+    p0 = JointTrajectoryPoint()
+    p0.positions = [ js.position[js.name.index('gripper')] ]
+    p0.time_from_start = rospy.Duration(0.0)
+    traj.points.append(p0)
+
+    p1 = JointTrajectoryPoint()
+    p1.positions = [position]
+    p1.time_from_start = rospy.Duration(duration)
+    traj.points.append(p1)
 
     client.send_goal(goal)
     client.wait_for_result()
@@ -259,22 +300,22 @@ def move_robot_between_wp(start_pos_str, end_pos_str):
 
 def pick_object():
     print("Picking object ...")
-    move_robot_arm([-pi/2, pi/4, 0.1, 0.0], 5)
+    move_robot_arm([-pi/2, pi/4, 0.1, 0.0], 3)
     move_gripper(-0.02, 2)
-    move_robot_arm([0.0, -0.6, 0.4, 0.0], 5)
-    #move_gripper(0.02, 2)
+    move_robot_arm([0.0, -0.6, 0.6, 0.0], 3)
+    move_gripper(0.02, 2)
     
 def do_some_inspection():
     print("Doing some inspection")
-    move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
+    move_robot_arm([pi/4, 0.2, 0.2, 0.0], 3)
     print("Taking picture ...")
     taking_photo_exe()
     rospy.sleep(2)
-    move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
+    move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 3)
     # print("Taking picture ...")
     # taking_photo_exe()
     # rospy.sleep(2)
-    move_robot_arm([0.0, -0.6, 0.4, 0.0], 5)
+    move_robot_arm([0.0, -0.6, 0.6, 0.0], 3)
 
 
 def making_turn_exe():
@@ -401,7 +442,6 @@ if __name__ == '__main__':
         # move_robot_arm([0.0, 0.0, 0.0, 0.0], 5)
         # move_gripper(0.0, 2)
         # move_gripper(-0.02, 2)
-        move_robot_arm([0.0, -0.6, 0.6, 0.0], 3)
         #move_robot_between_wp("6", "4")
 
         

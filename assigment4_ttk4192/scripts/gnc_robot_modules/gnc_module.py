@@ -82,7 +82,7 @@ class turtlebot_move():
         for point in WAYPOINTS:
             print("Point: ", point, "position", self.x, self.y)
             dist = hypot(point[0] - self.x, point[1] - self.y)
-            if dist < 0.5:  #5 cm tolerance
+            if dist < 0.05:  #5 cm tolerance
                 rospy.loginfo(f"Skipping waypoint {point}, already within {dist:.2f} m")
             else:
                 self.move_to_point(point[0], point[1])
@@ -110,7 +110,7 @@ class turtlebot_move():
         theta = atan2(diff_y, diff_x)
 
         # We should adopt different parameters for different kinds of movement
-        self.pid_theta.setPID(5, 0.02, 0.1)     # P control while steering
+        self.pid_theta.setPID(5, 0.02, 0.5)     # P control while steering
         self.pid_theta.setPoint(theta)
         rospy.logwarn("### PID: set target theta = " + str(theta) + " ###")
 
@@ -130,7 +130,7 @@ class turtlebot_move():
         # Have a rest
         #self.stop()
         self.pid_theta.setPoint(theta)
-        self.pid_theta.setPID(3, 0.02, 0.2)  # PID control while moving
+        self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while moving
 
         # Move to the target point
         while not rospy.is_shutdown():
@@ -157,7 +157,7 @@ class turtlebot_move():
     def turn_to_angle(self, angle):
         print("### PID: set target theta = " + str(angle) + " ###")
         self.pid_theta.setPoint(angle)
-        self.pid_theta.setPID(5, 0.2, 0.2)  # PID control while moving
+        self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while moving
         while not rospy.is_shutdown():
             angular = self.pid_theta.update(self.theta)
             if abs(angular) > 0.2:
