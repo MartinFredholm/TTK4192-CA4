@@ -113,7 +113,6 @@ class TakePhoto:
         if self.image_received:
             # Save an image
             cv2.imwrite(img_title, self.image)
-            print("Picture taken")
             return True
         else:
             return False
@@ -121,16 +120,6 @@ class TakePhoto:
 def taking_photo_exe():
     # Initialize
     camera = TakePhoto()
-
-    # Default value is 'photo.jpg'
-    # now = datetime.now()
-    # dt_string = now.strftime("%d%m%Y_%H%M%S")
-    # img_title = rospy.get_param('~image_title', 'photo'+dt_string+'.jpg')
-
-    # if camera.take_picture(img_title):
-    #     rospy.loginfo("Saved image " + img_title)
-    # else:
-    #     rospy.loginfo("No images received")
 
     now = datetime.now()
     dt_string = now.strftime("%d%m%Y_%H%M%S")
@@ -145,39 +134,9 @@ def taking_photo_exe():
         rospy.loginfo(f"Saved image {img_path}")
     else:
         rospy.logwarn("No images received")
-	#eog photo.jpg
-    # Sleep to give the last log messages time to be sent
 
-	# saving photo in a desired directory
-    # file_source = Path.home() / "catkin_ws" / "src" / "assigment4_ttk4192" / "scripts"
-    # file_destination = str(Path.home() / "catkin_ws/src/assigment4_ttk4192/scripts/photos")
-    # g='photo'+dt_string+'.jpg'
-
-    # shutil.move(str(file_source / g), file_destination)
     rospy.sleep(1)
 
-
-# def move_robot_arm(joint_positions_rad, duration=5):
-#     # Using /arm_controller/follow_trajectory/goal topic instead
-#     client = actionlib.SimpleActionClient('/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
-#     client.wait_for_server()
-
-#     goal = FollowJointTrajectoryGoal()
-#     goal.trajectory.joint_names = ['joint1', 'joint2', 'joint3', 'joint4']
-
-#     pt = JointTrajectoryPoint()
-#     pt.positions = joint_positions_rad
-#     pt.time_from_start = rospy.Duration(duration)
-#     goal.trajectory.points.append(pt)
-
-#     client.send_goal(goal)
-#     client.wait_for_result()
-
-#     # Maybe add a sleep here to allow time for the action to complete
-
-#     rospy.loginfo("Arm command sent")
-
-#     return client.get_result()
 
 def move_robot_arm(joint_positions_rad, duration=5.0):
     client = actionlib.SimpleActionClient('/arm_controller/follow_joint_trajectory', FollowJointTrajectoryAction)
@@ -305,7 +264,7 @@ def pick_object():
     rospy.sleep(3)
     move_gripper(-0.02, 2)
     rospy.sleep(2)
-    move_robot_arm([0.0, -0.6, 0.6, 0.0], 3)
+    move_robot_arm([0.0, -pi/2, 1, 0.4], 3)
     rospy.sleep(3)
     move_gripper(0.02, 2)
     
@@ -321,7 +280,7 @@ def do_some_inspection():
     # print("Taking picture ...")
     # taking_photo_exe()
     # rospy.sleep(2)
-    move_robot_arm([0.0, -0.6, 0.6, 0.0], 3)
+    move_robot_arm([0.0, -pi/2, 1, 0.4], 3)
 
 
 def making_turn_exe():
@@ -389,8 +348,12 @@ def charge_battery_waypoint0():
 def get_current_odom():
     # Get the current odometry data
     odom = rospy.wait_for_message("/odom", Odometry, timeout=5)
-    x_initial_offset = 0.23
-    y_initial_offset = 0.18
+    if not simulation:
+        x_initial_offset = 0.23
+        y_initial_offset = 0.18
+    else:
+        x_initial_offset = 0.0
+        y_initial_offset = 0.0
     x = odom.pose.pose.position.x + x_initial_offset
     y = odom.pose.pose.position.y + y_initial_offset
     orientation = odom.pose.pose.orientation
@@ -447,10 +410,11 @@ if __name__ == '__main__':
         # 5.0) Testing the GNC module (uncomment lines to test)
         #move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
         # move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
-        # move_robot_arm([0.0, 0.0, 0.0, 0.0], 5)
+        move_robot_arm([0.0, -pi/2, 1, 0.4], 5)
         # move_gripper(0.0, 2)
         # move_gripper(-0.02, 2)
-        #move_robot_between_wp("6", "4")
+        move_robot_to_waypoint("1")
+        move_robot_between_wp("1", "5")
 
         
 

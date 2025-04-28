@@ -152,6 +152,7 @@ def main_astar(grid_on, start_pos, end_pos):
     #print("points:", pts)
     
     WAYPOINTS = np.array(pts)
+    print("waypoints:", WAYPOINTS)
 
     def prune_path(WP):
         tol = 0.1
@@ -173,7 +174,7 @@ def main_astar(grid_on, start_pos, end_pos):
     WAYPOINTS = prune_path(WAYPOINTS)
     #WAYPOINTS = WAYPOINTS[1:] # remove start point (not needed since robot is already there)
 
-    #print("pruned waypoints:", WAYPOINTS)
+    print("pruned waypoints:", WAYPOINTS)
 
     # plot and annimation
     fig, ax = plt.subplots(figsize=(6,6))

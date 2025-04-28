@@ -6,6 +6,8 @@ import tf
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import Twist
 
+global simulation
+simulation = True
 
 # GNC module (path-followig and PID controller for the robot)
 """  Robot GNC module ----------------------------------------------------------------------
@@ -75,6 +77,10 @@ class turtlebot_move():
         self.counter = 0
         self.trajectory = list()
 
+        self.yaw = list()
+
+        self.thetas = list()
+
         # track a sequence of waypoints
         # Wait for the first odometry message to get the initial position
         rospy.wait_for_message("odom", Odometry, timeout=2.0)
@@ -96,6 +102,26 @@ class turtlebot_move():
         data = np.array(self.trajectory)
         np.savetxt('trajectory.csv', data, fmt='%f', delimiter=',')
         plt.plot(data[:,0],data[:,1])
+        plt.title("Trajectory")
+        plt.xlabel("X in m")
+        plt.ylabel("Y in m")
+        plt.show()
+
+        # plot yaw
+        data = np.array(self.yaw)
+        np.savetxt('yaw.csv', data, fmt='%f', delimiter=',')
+        plt.plot(data)
+        plt.title("Yaw")
+        plt.xlabel("Time")
+        plt.ylabel("Yaw in rad")
+        for theta in self.thetas:
+            plt.axhline(y=theta, color='r', linestyle='--')
+        self.thetas = list()
+        plt.legend(['Yaw', 'Target Yaws'])
+        # Add pi/2 and -pi/2 lines
+        # plt.axhline(y=pi/2, color='r', linestyle='--')
+        # plt.axhline(y=-pi/2, color='r', linestyle='--')
+
         plt.show()
 
 
@@ -110,8 +136,11 @@ class turtlebot_move():
         theta = atan2(diff_y, diff_x)
 
         # We should adopt different parameters for different kinds of movement
-        self.pid_theta.setPID(5, 0.02, 0.5)     # P control while steering
+        #self.pid_theta.setPID(5, 0.02, 0.5)     # P control while steering TODO (should not be PID?)
+        #self.pid_theta.setPID(5, 0.01, 0.5) 
+        self.pid_theta.setPID(1, 0, 0)
         self.pid_theta.setPoint(theta)
+        self.thetas.append(theta)
         rospy.logwarn("### PID: set target theta = " + str(theta) + " ###")
 
         
@@ -128,8 +157,9 @@ class turtlebot_move():
             self.rate.sleep()
 
         # Have a rest
-        #self.stop()
+        self.stop() # TODO! Check if it works at lab with stopping
         self.pid_theta.setPoint(theta)
+        self.thetas.append(theta)
         self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while moving
 
         # Move to the target point
@@ -157,7 +187,10 @@ class turtlebot_move():
     def turn_to_angle(self, angle):
         print("### PID: set target theta = " + str(angle) + " ###")
         self.pid_theta.setPoint(angle)
-        self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while moving
+        self.thetas.append(angle)
+        #self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while steering
+        #self.pid_theta.setPID(5, 0.01, 0.5)
+        self.pid_theta.setPID(1, 0, 0) # P control while steering
         while not rospy.is_shutdown():
             angular = self.pid_theta.update(self.theta)
             if abs(angular) > 0.2:
@@ -184,14 +217,19 @@ class turtlebot_move():
                     msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
         (roll, pitch, yaw) = tf.transformations.euler_from_quaternion(quarternion)
         self.theta = yaw
-        x_initial_offset = 0.23
-        y_initial_offset = 0.18
-        self.x = msg.pose.pose.position.x + 0.23
-        self.y = msg.pose.pose.position.y + 0.18
+        if not simulation:
+            x_initial_offset = 0.23
+            y_initial_offset = 0.18
+        else:
+            x_initial_offset = 0.0
+            y_initial_offset = 0.0
+        self.x = msg.pose.pose.position.x + x_initial_offset
+        self.y = msg.pose.pose.position.y + y_initial_offset
 
         # Make messages saved and prompted in 5Hz rather than 100Hz
         self.counter += 1
         if self.counter == 20:
             self.counter = 0
             self.trajectory.append([self.x,self.y])
+            self.yaw.append(yaw)
             #rospy.loginfo("odom: x=" + str(self.x) + ";  y=" + str(self.y) + ";  theta=" + str(self.theta))
