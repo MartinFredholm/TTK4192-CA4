@@ -92,7 +92,7 @@ class TakePhoto:
         self.image_received = False
 
         # Connect image topic
-        img_topic = "/camera/rgb/image_raw"
+        img_topic = "/camera/image"
         self.image_sub = rospy.Subscriber(img_topic, Image, self.callback)
 
         # Allow up to one second to connection
@@ -113,6 +113,7 @@ class TakePhoto:
         if self.image_received:
             # Save an image
             cv2.imwrite(img_title, self.image)
+            print("Picture taken")
             return True
         else:
             return False
@@ -301,17 +302,22 @@ def move_robot_between_wp(start_pos_str, end_pos_str):
 def pick_object():
     print("Picking object ...")
     move_robot_arm([-pi/2, pi/4, 0.1, 0.0], 3)
+    rospy.sleep(3)
     move_gripper(-0.02, 2)
+    rospy.sleep(2)
     move_robot_arm([0.0, -0.6, 0.6, 0.0], 3)
+    rospy.sleep(3)
     move_gripper(0.02, 2)
     
 def do_some_inspection():
     print("Doing some inspection")
     move_robot_arm([pi/4, 0.2, 0.2, 0.0], 3)
+    rospy.sleep(3)
     print("Taking picture ...")
     taking_photo_exe()
     rospy.sleep(2)
     move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 3)
+    rospy.sleep(3)
     # print("Taking picture ...")
     # taking_photo_exe()
     # rospy.sleep(2)
@@ -369,7 +375,7 @@ def making_turn_exe():
 
 def check_pump_picture_ir_waypoint0():
     print("Manipulating the pump ...")
-    #do_some_inspection()
+    do_some_inspection()
     pick_object()
     
 def check_seals_valve_picture_eo_waypoint0():
@@ -383,8 +389,10 @@ def charge_battery_waypoint0():
 def get_current_odom():
     # Get the current odometry data
     odom = rospy.wait_for_message("/odom", Odometry, timeout=5)
-    x = odom.pose.pose.position.x
-    y = odom.pose.pose.position.y
+    x_initial_offset = 0.23
+    y_initial_offset = 0.18
+    x = odom.pose.pose.position.x + x_initial_offset
+    y = odom.pose.pose.position.y + y_initial_offset
     orientation = odom.pose.pose.orientation
     _, _, theta = tf.transformations.euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
     return [round(x, 2), round(y, 2), 0] # Need to be changed to theta

@@ -184,8 +184,10 @@ class turtlebot_move():
                     msg.pose.pose.orientation.z, msg.pose.pose.orientation.w]
         (roll, pitch, yaw) = tf.transformations.euler_from_quaternion(quarternion)
         self.theta = yaw
-        self.x = msg.pose.pose.position.x
-        self.y = msg.pose.pose.position.y
+        x_initial_offset = 0.23
+        y_initial_offset = 0.18
+        self.x = msg.pose.pose.position.x + 0.23
+        self.y = msg.pose.pose.position.y + 0.18
 
         # Make messages saved and prompted in 5Hz rather than 100Hz
         self.counter += 1
