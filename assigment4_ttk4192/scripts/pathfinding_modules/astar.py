@@ -96,10 +96,6 @@ class Astar:
         while open_:
 
             best = min(open_, key=lambda x: x.f)
-            # print(best.cell_id)
-            # if best.cell_id in [[1,3]] : 
-            #     open_.remove(best)
-            #     best =  min(open_, key=lambda x: x.f)
             open_.remove(best)
             closed_.append(best)
 
@@ -140,8 +136,6 @@ def main_astar(grid_on, start_pos, end_pos):
 
     t = time()
     cost, route = astar.search_path(end_pos[:2])
-    #print(time()-t)
-    #print('astar cost:', cost)
 
     pts = []
     for x, y in route:
@@ -149,10 +143,7 @@ def main_astar(grid_on, start_pos, end_pos):
         y = (y+0.5) * grid.cell_size
         pts.append([x, y])
 
-    #print("points:", pts)
-    
     WAYPOINTS = np.array(pts)
-    print("waypoints:", WAYPOINTS)
 
     def prune_path(WP):
         tol = 0.1
@@ -172,9 +163,6 @@ def main_astar(grid_on, start_pos, end_pos):
     
     
     WAYPOINTS = prune_path(WAYPOINTS)
-    #WAYPOINTS = WAYPOINTS[1:] # remove start point (not needed since robot is already there)
-
-    print("pruned waypoints:", WAYPOINTS)
 
     # plot and annimation
     fig, ax = plt.subplots(figsize=(6,6))

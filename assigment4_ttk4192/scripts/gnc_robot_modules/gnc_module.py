@@ -61,7 +61,6 @@ class turtlebot_move():
     Path-following module
     """
     def __init__(self, WAYPOINTS, end_theta=0):
-        #rospy.init_node('turtlebot_move', anonymous=False)
         rospy.loginfo("Press CTRL + C to terminate")
         rospy.on_shutdown(self.stop)
 
@@ -86,13 +85,11 @@ class turtlebot_move():
         rospy.wait_for_message("odom", Odometry, timeout=2.0)
 
         for point in WAYPOINTS:
-            print("Point: ", point, "position", self.x, self.y)
             dist = hypot(point[0] - self.x, point[1] - self.y)
             if dist < 0.05:  #5 cm tolerance
-                rospy.loginfo(f"Skipping waypoint {point}, already within {dist:.2f} m")
+                continue
             else:
                 self.move_to_point(point[0], point[1])
-            #rospy.sleep(1)
         self.stop()
         # turn to the end angle
         self.turn_to_angle(end_theta)
@@ -107,38 +104,32 @@ class turtlebot_move():
         plt.ylabel("Y in m")
         plt.show()
 
-        # plot yaw
-        data = np.array(self.yaw)
-        np.savetxt('yaw.csv', data, fmt='%f', delimiter=',')
-        plt.plot(data)
-        plt.title("Yaw")
-        plt.xlabel("Time")
-        plt.ylabel("Yaw in rad")
-        for theta in self.thetas:
-            plt.axhline(y=theta, color='r', linestyle='--')
-        self.thetas = list()
-        plt.legend(['Yaw', 'Target Yaws'])
-        # Add pi/2 and -pi/2 lines
-        # plt.axhline(y=pi/2, color='r', linestyle='--')
-        # plt.axhline(y=-pi/2, color='r', linestyle='--')
+        # Plot of heading angle/yaw
+        # data = np.array(self.yaw)
+        # np.savetxt('yaw.csv', data, fmt='%f', delimiter=',')
+        # plt.plot(data)
+        # plt.title("Yaw")
+        # plt.xlabel("Time")
+        # plt.ylabel("Yaw in rad")
+        # for theta in self.thetas:
+        #     plt.axhline(y=theta, color='r', linestyle='--')
+        # self.thetas = list()
+        # plt.legend(['Yaw', 'Target Yaws'])
+        # # Add pi/2 and -pi/2 lines
+        # # plt.axhline(y=pi/2, color='r', linestyle='--')
+        # # plt.axhline(y=-pi/2, color='r', linestyle='--')
 
-        plt.show()
+        # plt.show()
 
 
     def move_to_point(self, x, y):
-        # Here must be improved the path-following ---
-        # Compute orientation for angular vel and direction vector for linear velocity
-
         diff_x = x - self.x
         diff_y = y - self.y
         direction_vector = np.array([diff_x, diff_y])
         direction_vector = direction_vector/sqrt(diff_x*diff_x + diff_y*diff_y)  # normalization
         theta = atan2(diff_y, diff_x)
 
-        # We should adopt different parameters for different kinds of movement
-        #self.pid_theta.setPID(5, 0.02, 0.5)     # P control while steering TODO (should not be PID?)
-        #self.pid_theta.setPID(5, 0.01, 0.5) 
-        self.pid_theta.setPID(1, 0, 0)
+        self.pid_theta.setPID(1, 0, 0) # Using P control while steering
         self.pid_theta.setPoint(theta)
         self.thetas.append(theta)
         rospy.logwarn("### PID: set target theta = " + str(theta) + " ###")
@@ -157,7 +148,7 @@ class turtlebot_move():
             self.rate.sleep()
 
         # Have a rest
-        self.stop() # TODO! Check if it works at lab with stopping
+        self.stop()
         self.pid_theta.setPoint(theta)
         self.thetas.append(theta)
         self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while moving
@@ -188,8 +179,6 @@ class turtlebot_move():
         print("### PID: set target theta = " + str(angle) + " ###")
         self.pid_theta.setPoint(angle)
         self.thetas.append(angle)
-        #self.pid_theta.setPID(5, 0.02, 0.5)  # PID control while steering
-        #self.pid_theta.setPID(5, 0.01, 0.5)
         self.pid_theta.setPID(1, 0, 0) # P control while steering
         while not rospy.is_shutdown():
             angular = self.pid_theta.update(self.theta)
@@ -232,4 +221,3 @@ class turtlebot_move():
             self.counter = 0
             self.trajectory.append([self.x,self.y])
             self.yaw.append(yaw)
-            #rospy.loginfo("odom: x=" + str(self.x) + ";  y=" + str(self.y) + ";  theta=" + str(self.theta))

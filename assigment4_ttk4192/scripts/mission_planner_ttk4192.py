@@ -44,7 +44,7 @@ version: 1.1
 
 # Define the global varible: WAYPOINTS  Wpts=[[x_i,y_i]];
 global WAYPOINTS
-WAYPOINTS = [[2,2],[1,0.5]]
+WAYPOINTS = [[2,2],[1,0.5]] # Not needed, but in cases no waypoints are given
 
 
 # 1) Program here your AI planner 
@@ -92,7 +92,7 @@ class TakePhoto:
         self.image_received = False
 
         # Connect image topic
-        img_topic = "/camera/image"
+        img_topic = "/camera/rgb/image_raw"
         self.image_sub = rospy.Subscriber(img_topic, Image, self.callback)
 
         # Allow up to one second to connection
@@ -193,8 +193,6 @@ def move_gripper(position, duration=2):
     client.send_goal(goal)
     client.wait_for_result()
 
-    # Maybe add a sleep here to allow time for the action to complete
-
     rospy.loginfo("Gripper command sent")
 
     return client.get_result()
@@ -220,7 +218,7 @@ def move_robot_to_waypoint(end_pos_str):
 
     waypoints = [wp_0, wp_1, wp_2, wp_3, wp_4, wp_5, wp_6]
     end_pos = waypoints[int(end_pos_str[-1])]
-    # WAYPOINTS = main_hybrid_a(heu,current_pos,end_pos,reverse,add_extra_cost,grid_on)
+    # WAYPOINTS = main_hybrid_a(heu,current_pos,end_pos,reverse,add_extra_cost,grid_on) # Used for hybrid A*
     WAYPOINTS = main_astar(False, current_pos, end_pos)
     print("Executing path following")
     theta_real = [0, pi/2, -pi/2, pi, pi, pi/2, pi/2]
@@ -248,13 +246,10 @@ def move_robot_between_wp(start_pos_str, end_pos_str):
     waypoints = [wp_0, wp_1, wp_2, wp_3, wp_4, wp_5, wp_6]
     start_pos = waypoints[int(start_pos_str[-1])]
     end_pos = waypoints[int(end_pos_str[-1])]
-    # print("Startpos inside moverobot:", start_pos)
-    # print("Endpos inside moverobot:", end_pos)
-    # WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+    # WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on) # Used for hybrid A*
     WAYPOINTS = main_astar(False, start_pos, end_pos)
     print("Executing path following")
     theta_real = [0, pi/2, -pi/2, pi, pi, pi/2, pi/2]
-    #print("End theta:", theta_real[int(end_pos_str[-1])])
     turtlebot_move(WAYPOINTS, theta_real[int(end_pos_str[-1])])
 
 
@@ -277,59 +272,8 @@ def do_some_inspection():
     rospy.sleep(2)
     move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 3)
     rospy.sleep(3)
-    # print("Taking picture ...")
-    # taking_photo_exe()
-    # rospy.sleep(2)
+    
     move_robot_arm([0.0, -pi/2, 1, 0.4], 3)
-
-
-def making_turn_exe():
-    print("Executing Make a turn")
-    rospy.sleep(1)
-    #Starts a new node
-    #rospy.init_node('turtlebot_move', anonymous=True)
-    velocity_publisher = rospy.Publisher('cmd_vel', Twist, queue_size=10)
-    vel_msg = Twist()
-
-    # Receiveing the user's input
-    print("Let's rotate your robot")
-    #speed = input("Input your speed (degrees/sec):")
-    #angle = input("Type your distance (degrees):")
-    #clockwise = input("Clockwise?: ") #True or false
-
-    speed = 5
-    angle = 180
-    clockwise = True
-
-    #Converting from angles to radians
-    angular_speed = speed*2*pi/360
-    relative_angle = angle*2*pi/360
-
-    #We wont use linear components
-    vel_msg.linear.x=0
-    vel_msg.linear.y=0
-    vel_msg.linear.z=0
-    vel_msg.angular.x = 0
-    vel_msg.angular.y = 0
-
-    # Checking if our movement is CW or CCW
-    if clockwise:
-        vel_msg.angular.z = -abs(angular_speed)
-    else:
-        vel_msg.angular.z = abs(angular_speed)
-    # Setting the current time for distance calculus
-    t0 = rospy.Time.now().to_sec()
-    current_angle = 0   #should be from the odometer
-
-    while(current_angle < relative_angle):
-        velocity_publisher.publish(vel_msg)
-        t1 = rospy.Time.now().to_sec()
-        current_angle = angular_speed*(t1-t0)
-
-    #Forcing our robot to stop
-    vel_msg.angular.z = 0
-    velocity_publisher.publish(vel_msg)
-    #rospy.spin()
 
 
 def check_pump_picture_ir_waypoint0():
@@ -358,7 +302,7 @@ def get_current_odom():
     y = odom.pose.pose.position.y + y_initial_offset
     orientation = odom.pose.pose.orientation
     _, _, theta = tf.transformations.euler_from_quaternion([orientation.x, orientation.y, orientation.z, orientation.w])
-    return [round(x, 2), round(y, 2), 0] # Need to be changed to theta
+    return [round(x, 2), round(y, 2), 0] # Needs to be changed to theta if used in the pathfinding module
 
 # AI parser
 def parse_stp_plan(plan_text):
@@ -407,17 +351,12 @@ if __name__ == '__main__':
         print("Press Intro to start ...")
         input_t=input("")
 
-        # 5.0) Testing the GNC module (uncomment lines to test)
-        #move_robot_arm([pi/4, 0.2, 0.2, 0.0], 5)
-        # move_robot_arm([-pi/4, 0.2, 0.2, 0.0], 5)
+
+        # Moving arm to initial position
         move_robot_arm([0.0, -pi/2, 1, 0.4], 5)
-        # move_gripper(0.0, 2)
-        # move_gripper(-0.02, 2)
-        move_robot_to_waypoint("1")
-        move_robot_between_wp("1", "5")
 
-        
 
+        # 5.0) Testing the GNC module
         run_GNC_test = False
 
         if run_GNC_test:
@@ -439,13 +378,13 @@ if __name__ == '__main__':
             wp_6 = [x_wp[6],y_wp[6],theta_wp[6]]
             start_pos = wp_2
             end_pos = wp_0
-            # WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on)
+            # WAYPOINTS = main_hybrid_a(heu,start_pos,end_pos,reverse,add_extra_cost,grid_on) # Used for hybrid A*
             WAYPOINTS = main_astar(False, start_pos, end_pos)
             print("Executing path following")
             turtlebot_move(WAYPOINTS)
 
 		# 5.1) Starting the AI Planner
-        plan_output = run_STP_planner(False)
+        plan_output = run_STP_planner(True)
         print("STP Plan Output:\n")
         print(plan_output)
     
