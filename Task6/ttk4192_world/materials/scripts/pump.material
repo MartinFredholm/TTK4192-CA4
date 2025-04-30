@@ -1,0 +1,13 @@
+material MyTexture/PumpMaterial
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture ../textures/pump.jpg
+      }
+    }
+  }
+}

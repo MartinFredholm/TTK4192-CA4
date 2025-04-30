@@ -1,0 +1,13 @@
+material MyTexture/ValveMaterial
+{
+  technique
+  {
+    pass
+    {
+      texture_unit
+      {
+        texture ../textures/valve.jpeg
+      }
+    }
+  }
+}
